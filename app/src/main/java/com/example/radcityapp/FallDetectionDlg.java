@@ -13,17 +13,27 @@ import android.widget.TextView;
 
 import androidx.fragment.app.DialogFragment;
 
+/**
+ * Dialog for configuring fall detection
+ */
 public class FallDetectionDlg extends DialogFragment {
     private Activity mActivity;
     Switch mSwitch;
     TextView mTextView;
 
+    /**
+     * Interface to listen for dialog confirmation
+     */
     public interface FallDetectionDlgListener{
         public void onDialogPositiveClick(FallDetectionDlg dlg);
     }
 
     FallDetectionDlgListener listener;
 
+    /**
+     * Register listener on attach
+     * @param context
+     */
     @Override
     public void onAttach(Context context){
         super.onAttach(context);
@@ -34,6 +44,11 @@ public class FallDetectionDlg extends DialogFragment {
         }
     }
 
+    /**
+     * Setup dialog
+     * @param savedInstanceState
+     * @return
+     */
     @Override
     public Dialog onCreateDialog(Bundle savedInstanceState){
         mActivity = getActivity();
@@ -63,6 +78,4 @@ public class FallDetectionDlg extends DialogFragment {
 
         return dlg;
     }
-
-
 }

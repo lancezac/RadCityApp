@@ -21,13 +21,17 @@ import static androidx.constraintlayout.motion.utils.Oscillator.TAG;
  */
 public class PiConnectThread extends Thread {
     volatile boolean bRunning = true;
-    private BluetoothSocket mmSocket = null;
-    private BluetoothDevice mmDevice = null;
+    private BluetoothSocket mSocket = null;
+    private BluetoothDevice mDevice = null;
     final private Handler mHandler;
     final private Context mContext;
-    private InputStream mmInStream;
+    private InputStream mInStream;
 
-
+    /**
+     * Constructor
+     * @param handler
+     * @param context
+     */
     public PiConnectThread(Handler handler, Context context) {
         mHandler = handler;
         mContext = context;
@@ -39,12 +43,13 @@ public class PiConnectThread extends Thread {
      */
     private void findDevice() throws InterruptedException {
         BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-        while(mmDevice == null){
+        while(mDevice == null){
             Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
             for (BluetoothDevice device : pairedDevices) {
                 String deviceName = device.getName();
+                // hard coded for now, could be made dynamic in the future
                 if (deviceName.equals("raspberrypi")) {
-                    mmDevice = device;
+                    mDevice = device;
                     break;
                 }
             }
@@ -65,7 +70,7 @@ public class PiConnectThread extends Thread {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-            BluetoothSocket tmp = null;
+            BluetoothSocket tmpSoc = null;
 
             mHandler.post(new Runnable() {
                 public void run() {
@@ -73,32 +78,36 @@ public class PiConnectThread extends Thread {
                 }
             });
 
+            // create a socket using the service UUID
             try {
-                tmp = mmDevice.createRfcommSocketToServiceRecord(UUID.fromString("146e39ac-103d-416b-9b3d-93c1596724c3"));
+                tmpSoc = mDevice.createRfcommSocketToServiceRecord(UUID.fromString("146e39ac-103d-416b-9b3d-93c1596724c3"));
             } catch (IOException e) {
                 Log.e(TAG, "Socket's create() method failed", e);
                 break;
             }
-            mmSocket = tmp;
+            mSocket = tmpSoc;
 
+            // connect to the socket
             try {
-                mmSocket.connect();
+                mSocket.connect();
             } catch (IOException connectException) {
                 try {
-                    mmSocket.close();
+                    mSocket.close();
                 } catch (IOException closeException) {
                     Log.e(TAG, "Could not close the client socket", closeException);
                     break;
                 }
             }
 
+            // establish an input stream
             try {
-                mmInStream = mmSocket.getInputStream();
+                mInStream = mSocket.getInputStream();
             } catch (IOException e) {
                 Log.e(TAG, "Error occurred when creating input stream", e);
                 break;
             }
 
+            // init a buffer for reading
             byte[] buff = new byte[1024];
             int numBytes;
             mHandler.post(new Runnable() {
@@ -107,9 +116,10 @@ public class PiConnectThread extends Thread {
                 }
             });
 
+            // continue to read from the socket while bRunning is set
             while (bRunning) {
                 try {
-                    numBytes = mmInStream.read(buff);
+                    numBytes = mInStream.read(buff);
                     Message readMsg = mHandler.obtainMessage(
                             1, numBytes, -1,
                             buff);
@@ -118,20 +128,24 @@ public class PiConnectThread extends Thread {
                     Log.d(TAG, "Input stream was disconnected", e);
                     mHandler.post(new Runnable() {
                         public void run() {
-                            Toast.makeText(mContext, "Input stream disconnected",    Toast.LENGTH_LONG).show();
+                            Toast.makeText(mContext, "Input stream disconnected",   Toast.LENGTH_LONG).show();
                         }
                     });
+
+                    // our input stream was disconnected, so we need to close our our stream
+                    // and socket before trying to reconnect
                     try {
-                        mmInStream.close();
+                        mInStream.close();
                     } catch (IOException ioException) {
                         ioException.printStackTrace();
                     }
 
                     try {
-                        mmSocket.close();
+                        mSocket.close();
                     } catch (IOException ioException) {
                         ioException.printStackTrace();
                     }
+
                     // wait before trying connection again
                     try {
                         Thread.sleep(5000);
@@ -142,14 +156,17 @@ public class PiConnectThread extends Thread {
                 }
             }
         }
+
+        // bRunning has been set to false, close out the stream and socket
+        // before completing execution
         try {
-            mmInStream.close();
+            mInStream.close();
         } catch (IOException e) {
             e.printStackTrace();
 
         }
         try {
-            mmSocket.close();
+            mSocket.close();
         } catch (IOException e) {
             e.printStackTrace();
         }

@@ -14,7 +14,6 @@ import android.app.Activity;
 import android.app.Application;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.content.Context;
 import android.content.Intent;
@@ -27,22 +26,18 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
-import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
-import org.w3c.dom.Text;
-
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Queue;
 
-
-
+/**
+ * MainActivity class for the RadCityApp
+ */
 public class MainActivity extends AppCompatActivity implements LocationListener,
         Application.ActivityLifecycleCallbacks, FallDetectionDlg.FallDetectionDlgListener {
     String CHANNEL_ID="1";
@@ -51,12 +46,12 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     private double mAmbientPressure = 0.0;
     private double mAmbientAlt = 0.0;
     private double mAmps = 0.0;
+    // could be added back in at some point, keeping in the code for now
     private double mBrakeTempC = 0.0;
     private double mBatteryTempC = 0.0;
     private double mBatteryVoltage = 0.0;
     private int mPASLevel = 0;
     private int mHeadlightState = 0;
-    private float mSpeed = 0.f;
     private boolean m_bFirstReading = true;
     private double mInitialBatteryReading = 0;
     private boolean m_bConnect = false;
@@ -79,8 +74,6 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     TextView mPowerUsageView;
     TextView mAmbientTempView;
     TextView mAmbientHumidityView;
-    TextView mBatteryTempView;
-    TextView mFrontBrakeTempView;
     TextView mPressureView;
     TextView mAltitudeView;
     TextView mBikePowerView;
@@ -161,9 +154,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_NOTIFICATION_POLICY}, 1);
         }
 
-
+        // get a location update every 2 seconds or 2 meters, which ever elapses/is covered more quickly
         mLocationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000, 2, this);
 
+        // setup bluetooth
         BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
 
         if (!bluetoothAdapter.isEnabled()) {
@@ -171,9 +165,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             startActivityForResult(enableBtIntent, 1);
         }
 
-
         // initialize member variables
-
 
         mRangeEstimateView = (TextView) findViewById(R.id.RangeEstimate);
         mBatteryChargeView = (TextView) findViewById(R.id.BatteryChargePercent);
@@ -192,7 +184,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
         mFallDetection = new FallDetection(this, mHandler, getApplicationContext());
 
-
+        // setup notification channel
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             CharSequence name = "RadCityAppNotifications";
             String description = "Notifications";
@@ -215,8 +207,9 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         double chargeEstimate = FortyEightVoltBatteryLevelEstimator.getBatteryLevelEstimate(mBatteryVoltage);
         double rangeEstimate = RangeEstimator.EstimateRange(mPASLevel, chargeEstimate);
 
+        // logic for posting warnings at 10 miles and 5 miles
         if (rangeEstimate > 0){
-            if (rangeEstimate < 20 && mbOkToSend10MileWarning){
+            if (rangeEstimate < 10 && mbOkToSend10MileWarning){
                 publishNotification(rangeEstimate);
                 mbOkToSend10MileWarning = false;
             }
@@ -226,24 +219,26 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                 mbOkToSend5MileWarning = false;
             }
 
-            if (rangeEstimate >= 20){
+            if (rangeEstimate >= 10){
                 mbOkToSend10MileWarning = true;
             }
 
-            if (rangeEstimate >=5 ){
+            if (rangeEstimate >= 5 ){
                 mbOkToSend5MileWarning = true;
             }
         }
 
+        // these fields can be displayed without modification
         mAmbientTempView.setText(String.format(Locale.ENGLISH,"%1$,.0f F", CtoF(mAmbientTemp)));
         mAmbientHumidityView.setText(String.format(Locale.ENGLISH,"%1$,.0f %%", mAmbientHumidity));
         mPressureView.setText(String.format(Locale.ENGLISH,"%1$,.0f hPa", mAmbientPressure));
-        // convert alt from m to ft
+
+        // convert alt from m to ft before displaying
         mAltitudeView.setText(String.format(Locale.ENGLISH,"%1$,.0f ft", mAmbientAlt * 3.28084));
 
-
         String powerState = "Off";
-        // only display certain fields when the bike is on
+        // only display certain fields when the bike is on, which is indicated by a battery voltage
+        // greater than 0
         if (mBatteryVoltage > 0)
         {
             mBatteryChargeView.setText(String.format(Locale.ENGLISH,"%1$,.0f %%", chargeEstimate));
@@ -256,6 +251,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             Log.d("AMPS", Double.toString(mAmps));
             double amps = mAmps/48 * 16;
 
+            // get a first battery capacity remaining measurement as a baseline
             if (m_bFirstReading && chargeEstimate > 0){
                 mInitialBatteryReading = RangeEstimator.getRemainingCapacity(chargeEstimate);
                 m_bFirstReading = false;
@@ -267,6 +263,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             double wattHoursPerMile = 0;
             double remainingEstimate = RangeEstimator.getRemainingCapacity(chargeEstimate);
             if(mDistanceTraveled > 0 && remainingEstimate < mInitialBatteryReading) {
+                // convert meters to miles before dividing the watt hours consumed over the distance travelled
                 wattHoursPerMile = (mInitialBatteryReading - remainingEstimate)/(0.000621371 * mDistanceTraveled);
             }
 
@@ -276,6 +273,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             powerState = "On";
         }
         else {
+            // voltage is 0, so set each bike related view to N/A
             mBatteryChargeView.setText("N/A");
             mRangeEstimateView.setText("N/A");
             mBatteryVoltageView.setText("N/A");
@@ -308,11 +306,11 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
      *  respond to location update
      */
     public void onLocationChanged(Location location){
-        mSpeed = location.getSpeed();
+        double speed = location.getSpeed();
         mFallDetection.setCurrentLoc(location);
 
         // convert speed from m/s to mph
-        mGPSSpeedView.setText(String.format(Locale.ENGLISH, "%1$,.1f mph", mSpeed * 2.2369));
+        mGPSSpeedView.setText(String.format(Locale.ENGLISH, "%1$,.1f mph", speed * 2.2369));
         if (mFirstDistanceCalc){
             mPrevLoc = location;
             mFirstDistanceCalc = false;
@@ -323,6 +321,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         mPrevLoc = location;
     }
 
+    /**
+     * Open the fall config dialog
+     * @param view
+     */
     public void onSelectFallDlg(View view){
         FallDetectionDlg dlg = new FallDetectionDlg();
         Bundle args = new Bundle();
@@ -332,6 +334,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         dlg.show(getSupportFragmentManager(), "config fall");
     }
 
+    /**
+     * Connect or disconnect to the RPi based on internal state
+     * @param view
+     */
     public void onConnect(View view){
         // start the Pi connect thread to handle receiving data from the Pi
         Button b = (Button) findViewById(R.id.Connect);
@@ -348,6 +354,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         }
     }
 
+    /**
+     * Publish a notification to the user containing the estimated range remaining
+     * @param remainingRange
+     */
     public void publishNotification(double remainingRange){
         String message = "";
 
@@ -365,6 +375,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         notificationManager.notify(1, builder.build());
     }
 
+    // default override methods
     @Override
     public void onActivityCreated(@NonNull Activity activity, @Nullable Bundle savedInstanceState) {
 
